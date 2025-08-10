@@ -1,0 +1,190 @@
+esphome:
+  name: a6v3
+  friendly_name: a6v3
+  ##libraries:
+  #  - OneWire
+  #  - DallasTemperature
+  #  - johboh/DS2482 @ ^1.0.0
+  #  # If you use a DS2482 Arduino lib, add it here:
+  #  # - "DS2482"
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          // Schreibe Testwert 0x42 an Adresse 0x0000
+          uint8_t write_val = 0x42;
+          id(eeprom).write_byte(0x0000, write_val);
+          delay(10); // Schreibzeit
+          
+          // Lese Wert zurück
+          auto read_val = id(eeprom).read_byte(0x0000);
+          if (read_val.has_value()) {
+            ESP_LOGI("eeprom", "Gelesen: 0x%02X", read_val.value());
+          } else {
+            ESP_LOGE("eeprom", "Lesefehler!");
+          }
+
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+
+# Enable logging
+logger:
+  level: DEBUG
+# Enable Home Assistant API
+api:
+
+ota:
+  platform: esphome
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+
+captive_portal:
+
+external_components:
+  - source: components
+    components: [ds2482_custom]
+
+i2c:
+  sda: 12
+  scl: 11
+  scan: true
+  id: bus_a
+
+i2c_device:
+  id: eeprom
+  address: 0x5C  # typical base address for AT24C256
+
+ds2482_custom:
+  address: 0x18
+  update_interval: 15s
+
+#sensor:
+#  - platform: ds248x
+#    address: 0x3f0451d446e0e228
+#    name: "Hot Water - Heater"
+#    id: 'hot_water_heater'
+
+
+# Example configuration entry
+pcf8574:
+  - id: 'pcf8574_hub_out_1'  # for output channel 1-8
+    address: 0x24
+
+  - id: 'pcf8574_hub_in_1'  # for input channel 1-8
+    address: 0x22
+
+# Individual outputs
+switch:
+  - platform: gpio
+    name: "a6-light1"
+    id: light1
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 0
+      mode: OUTPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-light2"
+    id: light2
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 1
+      mode: OUTPUT
+      inverted: true
+     
+  - platform: gpio
+    name: "a6-light3"
+    id: light3
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 2
+      mode: OUTPUT
+      inverted: true
+     
+  - platform: gpio
+    name: "a6-light4"
+    id: light4
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 3
+      mode: OUTPUT
+      inverted: true
+     
+  - platform: gpio
+    name: "a6-light5"
+    id: light5
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 4
+      mode: OUTPUT
+      inverted: true
+     
+  - platform: gpio
+    name: "a6-light6"
+    id: light6
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 5
+      mode: OUTPUT
+      inverted: true
+     
+
+binary_sensor:
+  - platform: gpio
+    name: "a6-input1"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 0
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-input2"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 1
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-input3"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 2
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-input4"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 3
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-input5"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 4
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a6-input6"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 5
+      mode: INPUT
+      inverted: true
