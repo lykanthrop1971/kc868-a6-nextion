@@ -1,17 +1,7 @@
+# Basic Config
 esphome:
-  name: a6v3
-  friendly_name: a6v3
-  libraries:
-    - adafruit/Adafruit DS248x @ ^1.0.2
-    - adafruit/Adafruit BusIO @ ^1.14.5
-  platformio_options:
-    lib_deps:
-      - adafruit/Adafruit DS248x @ ^1.0.2
-      - adafruit/Adafruit BusIO @ ^1.14.5
-    lib_ldf_mode: deep+
-    build_flags:
-      - -I$PROJECT_PACKAGES_DIR/framework-arduinoespressif32/libraries/Wire/src
-      - -I$PROJECT_PACKAGES_DIR/framework-arduinoespressif32/libraries/Network/src
+  name: heizung-esp32
+  friendly_name: Heizungssteuerung
   on_boot:
     priority: 600
     then:
@@ -19,39 +9,17 @@ esphome:
           id(mischer_schliesst) = false;
           id(mischer_geschlossen) = false;
           ESP_LOGI("Boot", "Mischer-Flags zurückgesetzt: schliesst=%d, geschlossen=%d", id(mischer_schliesst), id(mischer_geschlossen));
-      - lambda: |-
-          uint8_t buf[4];
-          auto dev = id(eeprom);
-          if (dev->read(buf, sizeof(buf)) == esphome::i2c::ErrorCode::ERROR_OK) {
-            float val;
-            memcpy(&val, buf, sizeof(val));
-            if (std::isfinite(val) && val >= 0.0f && val < 100000.0f) {
-              id(brenner_betriebsstunden) = val;
-              ESP_LOGI("FRAM", "Brenner-Betriebsstunden geladen: %.2f h", val);
-            }
-          }
-      - lambda: |-
-          uint8_t buf[4];
-          auto dev = id(eeprom);
-          // Adresse 0x10 setzen und lesen
-          uint8_t addr[2] = {0x00, 0x10}; // High, Low Byte
-          if (dev->write(addr, 2) == esphome::i2c::ErrorCode::ERROR_OK &&
-              dev->read(buf, sizeof(buf)) == esphome::i2c::ErrorCode::ERROR_OK) {
-            float val;
-            memcpy(&val, buf, sizeof(val));
-            if (std::isfinite(val) && val >= 30.0f && val <= 80.0f) {
-              id(warmwasser_zieltemperatur) = val;
-              ESP_LOGI("FRAM", "Warmwasser-Zieltemperatur geladen: %.2f °C", val);
-            }
-          }
+          
 esp32:
-  board: esp32-s3-devkitc-1
+  board: esp32dev
   framework:
     type: arduino
-
-# Enable logging
 logger:
   level: DEBUG
+
+wifi:
+  ssid: "FRITZ!Box 7590 KS"
+  password: "70754088624202801803"
 
 # Enable Home Assistant API
 api:
@@ -69,14 +37,7 @@ api:
 
 ota:
   platform: esphome
-  password: !secret ota_password
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
-  ap:
+  password: ""
 
 web_server:
   port: 80
@@ -87,72 +48,14 @@ web_server:
   local: true
   css_include: webserver.css
   js_include: webserver.js
-  
-captive_portal:
 
-external_components:
-  - source:
-      type: local
-      path: ./components
 
 i2c:
-  sda: 12
-  scl: 11
+  sda: 4
+  scl: 5
   scan: true
   id: bus_a
 
-i2c_device:
-  - id: eeprom
-    address: 0x51
-
-ds2482_custom:
-  address: 0x18
-  update_interval: 30s
-  sensors:
-    - channel: 0
-      name: "Vorlauftemperatur"
-      id: vorlauftemperatur
-      accuracy_decimals: 2
-      filters:
-        - filter_out: nan
-      on_value:
-        then:
-          - logger.log:
-              format: "Vorlauftemperatur: %.2f C"
-              args: [ 'x' ]
-      on_raw_value:
-      - logger.log: "Vorlauftemperatur Rohwert gelesen"             
-    - channel: 1
-      name: "Kesseltemperatur"
-      id: kesseltemperatur
-      accuracy_decimals: 2
-      filters:
-        - filter_out: nan
-      on_value:
-        then:
-          - logger.log:
-              format: "Kesseltemperatur: %.2f C"
-              args: [ 'x' ]
-      on_raw_value:
-      - logger.log: "Kesseltemperatur Rohwert gelesen"
-    - channel: 2
-      name: "Warmwassertemperatur"
-      id: warmwassertemperatur
-      accuracy_decimals: 2
-      filters:
-        - filter_out: nan
-      on_value:
-        then:
-          - logger.log:
-              format: "Warmwassertemperatur: %.2f C"
-              args: [ 'x' ]    
-      on_raw_value:
-      - logger.log: "Warmwassertemperatur Rohwert gelesen"        
-    - channel: 3
-      name: "Outdoor"
-      accuracy_decimals: 2
-
-# Example configuration entry
 pcf8574:
   - id: 'pcf8574_hub_out_1'  # for output channel 1-8
     address: 0x24
@@ -160,24 +63,11 @@ pcf8574:
   - id: 'pcf8574_hub_in_1'  # for input channel 1-8
     address: 0x22
 
-uart:
-  id: uart_nextion
-  tx_pin: 13
-  rx_pin: 14
-  baud_rate: 115200
-
-display:
-  - platform: nextion
-    id: nextion_display
-    uart_id: uart_nextion
-    lambda: |-
-      it.set_component_text("t0", "Hallo ESPHome!");
-    # Serve the TFT from HA (http or https). http is faster on small MCUs.
-    tft_url: http://192.168.1.56:8123/local/tft/heizung.tft
-    # optional: choose a page at connect
-    start_up_page: 0
-      
 globals:
+  - id: brennerbetrieb_bz_sim
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - id: zieltemperatur
     type: float
     restore_value: true
@@ -300,92 +190,149 @@ select:
               ESP_LOGI("Heizmodus", "Winter-Modus: Mischer-Geschlossen-Flag zurückgesetzt");
             }
 
+button:
+  - platform: restart
+    name: "Neustart"
+    id: restart_button
+  - platform: template
+    name: "Reset Alle Einstellungen"
+    id: reset_all_settings
+    icon: "mdi:restart"
+    on_press:
+      then:
+        - lambda: |-
+            id(zieltemperatur) = 40.0f;
+            id(letzte_aktion) = 0UL;
+            id(letzter_status) = 0;
+            id(impulsdauer_ms) = 1500;
+            id(impuls_pause_ms) = 30000;
+            id(letzte_temp) = 0.0f;
+            id(pid_integral) = 0.0f;
+            id(pid_last_error) = 0.0f;
+            id(pid_output) = 0.0f;
+            id(pid_kp) = 1.2f;
+            id(pid_ki) = 0.005f;
+            id(pid_kd) = 0.3f;
+            id(warmwasser_zieltemperatur) = 50.0f;
+            id(heizmodus) = "summer";
+            id(mischer_position) = 50.0f;
+            id(mischer_laufzeit_s) = 120;
+            id(letzte_kalibrierung) = 0UL;
+            id(mischer_schliesst) = false;
+            id(mischer_geschlossen) = false;
+            id(invalid_sensor_count) = 0;
+            ESP_LOGI("Reset", "Alle nichtflüchtigen Einstellungen wurden auf Standardwerte zurückgesetzt.");
+        - button.press: restart_button
 
 # Individual outputs
 switch:
   - platform: gpio
-    name: "a6-light1"
-    id: light1
+    name: "1"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 0
       mode: OUTPUT
       inverted: true
-
   - platform: gpio
-    name: "Mischer Auf"
-    id: mischer_auf
+    name: "2"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 1
       mode: OUTPUT
       inverted: true
-    restore_mode: ALWAYS_OFF
-    on_turn_on:
-      - logger.log: "Mischer Auf wird EIN geschaltet"
-    on_turn_off:
-      - logger.log: "Mischer Auf wird AUS geschaltet"  
   - platform: gpio
-    name: "Mischer Zu"
-    id: mischer_zu
+    name: "3"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 2
       mode: OUTPUT
       inverted: true
-    restore_mode: ALWAYS_OFF
-    on_turn_on:
-      - logger.log: "Mischer Zu wird EIN geschaltet"
-    on_turn_off:
-      - logger.log: "Mischer Zu wird AUS geschaltet"   
   - platform: gpio
-    name: "Heizkreispumpe"
-    id: heizkreispumpe
+    name: "Mischer Auf"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 3
       mode: OUTPUT
       inverted: true
+    id: mischer_auf
     restore_mode: ALWAYS_OFF
     on_turn_on:
-      - logger.log: "Heizkreispumpe wird EIN geschaltet"
+      - logger.log: "Mischer Auf wird EIN geschaltet"
     on_turn_off:
-      - logger.log: "Heizkreispumpe wird AUS geschaltet" 
+      - logger.log: "Mischer Auf wird AUS geschaltet"
   - platform: gpio
-    name: "Warmwasserpumpe"
-    id: warmwasserpumpe
+    name: "Mischer Zu"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 4
       mode: OUTPUT
       inverted: true
+    id: mischer_zu
     restore_mode: ALWAYS_OFF
     on_turn_on:
-      - logger.log: "Warmwasserpumpe wird EIN geschaltet"
+      - logger.log: "Mischer Zu wird EIN geschaltet"
     on_turn_off:
-      - logger.log: "Warmwasserpumpe wird AUS geschaltet" 
+      - logger.log: "Mischer Zu wird AUS geschaltet"
   - platform: gpio
-    name: "Brenner"
-    id: brenner
+    name: "Heizkreispumpe"
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 6
+      mode: OUTPUT
+      inverted: true
+    id: heizkreispumpe
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - logger.log: "Heizkreispumpe wird EIN geschaltet"
+    on_turn_off:
+      - logger.log: "Heizkreispumpe wird AUS geschaltet"
+  - platform: gpio
+    name: "Warmwasserpumpe"
     pin:
       pcf8574: pcf8574_hub_out_1
       number: 5
       mode: OUTPUT
       inverted: true
+    id: warmwasserpumpe
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - logger.log: "Warmwasserpumpe wird EIN geschaltet"
+    on_turn_off:
+      - logger.log: "Warmwasserpumpe wird AUS geschaltet"
+  - platform: gpio
+    name: "Brenner"
+    pin:
+      pcf8574: pcf8574_hub_out_1
+      number: 7
+      mode: OUTPUT
+      inverted: true
+    id: brenner
     restore_mode: ALWAYS_OFF
     on_turn_on:
       - logger.log: "Brenner wird EIN geschaltet"
     on_turn_off:
-      - logger.log: "Brenner wird AUS geschaltet"  
+      - logger.log: "Brenner wird AUS geschaltet"
+
   - platform: template
     name: "Legionellenschaltung aktiv"
     id: legionellen_enable
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON  # Standard: aktiv nach Neustart     
+    restore_mode: RESTORE_DEFAULT_ON  # Standard: aktiv nach Neustart
+  - platform: template
+    name: "Brennerbetrieb BZ Simulation"
+    id: brennerbetrieb_bz_switch
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: |-
+          id(brennerbetrieb_bz_sim) = true;
+    turn_off_action:
+      - lambda: |-
+          id(brennerbetrieb_bz_sim) = false;
 
 binary_sensor:
   - platform: gpio
-    name: "a6-input1"
+    name: "a8-input1"
     pin:
       pcf8574: pcf8574_hub_in_1
       number: 0
@@ -393,7 +340,7 @@ binary_sensor:
       inverted: true
 
   - platform: gpio
-    name: "a6-input2"
+    name: "a8-input2"
     pin:
       pcf8574: pcf8574_hub_in_1
       number: 1
@@ -401,10 +348,26 @@ binary_sensor:
       inverted: true
 
   - platform: gpio
-    name: "a6-input3"
+    name: "a8-input3"
     pin:
       pcf8574: pcf8574_hub_in_1
       number: 2
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a8-input4"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 3
+      mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a8-input5"
+    pin:
+      pcf8574: pcf8574_hub_in_1
+      number: 4
       mode: INPUT
       inverted: true
 
@@ -413,16 +376,19 @@ binary_sensor:
     id: brennerbetrieb_bz
     pin:
       pcf8574: pcf8574_hub_in_1
-      number: 3
+      number: 5
       mode: INPUT
       inverted: true
     device_class: running
-
+  - id: brennerbetrieb_bz_sim
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   - platform: gpio
     name: "Brennerstoerung"
     pin:
       pcf8574: pcf8574_hub_in_1
-      number: 4
+      number: 6
       mode: INPUT
       inverted: true
 
@@ -430,8 +396,20 @@ binary_sensor:
     name: "Thermostat_Buderus"
     pin:
       pcf8574: pcf8574_hub_in_1
-      number: 5
+      number: 7
       mode: INPUT
+      inverted: true
+
+  - platform: gpio
+    name: "a8-s3"
+    pin:
+      number: 32
+      inverted: true
+
+  - platform: gpio
+    name: "a8-s4"
+    pin:
+      number: 33
       inverted: true
 
 script:
@@ -510,113 +488,68 @@ script:
             ESP_LOGW("Mischer", "Sensor hat keinen Status, Position %.1f%% konnte nicht gesendet werden", id(mischer_position));
           }
 
-
-
-button:
-  - platform: template
-    id: update_nextion_button
-    name: "Update Nextion"
-    entity_category: diagnostic
-    on_press:
-      then:
-        - lambda: 'id(nextion_display)->upload_tft();'
-  - platform: template
-    name: "EEPROM Self-Test"
-    id: eeprom_self_test
-    on_press:
-      - lambda: |-
-          using esphome::i2c::ErrorCode;
-
-          auto dev = id(eeprom);
-          const uint16_t base = 0x7FF0;
-          const uint8_t  N    = 16;
-          uint8_t original[N], verify[N];
-
-          auto wr = [&](uint16_t addr, uint8_t val) -> bool {
-            uint8_t buf[3] = { (uint8_t)(addr >> 8), (uint8_t)(addr & 0xFF), val };
-            auto res = dev->write(buf, sizeof(buf));
-            delay(5);  // tWR
-            return res == ErrorCode::ERROR_OK;
-          };
-
-          auto rd = [&](uint16_t addr, uint8_t *out) -> bool {
-            uint8_t ab[2] = { (uint8_t)(addr >> 8), (uint8_t)(addr & 0xFF) };
-            if (dev->write(ab, sizeof(ab)) != ErrorCode::ERROR_OK) return false;
-            return dev->read(out, 1) == ErrorCode::ERROR_OK;
-          };
-
-          ESP_LOGI("eeprom", "Starting self-test at 0x%04X..0x%04X", base, base + N - 1);
-
-          for (uint8_t i = 0; i < N; i++) {
-            if (!rd(base + i, &original[i])) {
-              ESP_LOGE("eeprom", "Read original failed @0x%04X", base + i);
-              return;
-            }
-          }
-
-          for (uint8_t i = 0; i < N; i++) {
-            uint8_t v = 0xA0 + i;
-            if (!wr(base + i, v)) {
-              ESP_LOGE("eeprom", "Write failed @0x%04X", base + i);
-              for (uint8_t j = 0; j <= i; j++) wr(base + j, original[j]);
-              return;
-            }
-          }
-
-          uint8_t mismatches = 0;
-          for (uint8_t i = 0; i < N; i++) {
-            if (!rd(base + i, &verify[i])) { mismatches = 0xFF; break; }
-            uint8_t exp = 0xA0 + i;
-            if (verify[i] != exp) {
-              ESP_LOGE("eeprom", "Mismatch @0x%04X: got 0x%02X, expected 0x%02X", base + i, verify[i], exp);
-              mismatches++;
-            }
-          }
-
-          for (uint8_t i = 0; i < N; i++) wr(base + i, original[i]);
-
-          if (mismatches == 0) {
-            ESP_LOGI("eeprom", "EEPROM self-test PASS (restored).");
-          } else if (mismatches == 0xFF) {
-            ESP_LOGE("eeprom", "EEPROM self-test FAILED due to read error (restored).");
-          } else {
-            ESP_LOGE("eeprom", "EEPROM self-test FAILED with %u mismatches (restored).", mismatches);
-          }
-  - platform: restart
-    name: "Neustart"
-    id: restart_button
-  - platform: template
-    name: "Reset Alle Einstellungen"
-    id: reset_all_settings
-    icon: "mdi:restart"
-    on_press:
-      then:
-        - lambda: |-
-            id(zieltemperatur) = 40.0f;
-            id(letzte_aktion) = 0UL;
-            id(letzter_status) = 0;
-            id(impulsdauer_ms) = 1500;
-            id(impuls_pause_ms) = 30000;
-            id(letzte_temp) = 0.0f;
-            id(pid_integral) = 0.0f;
-            id(pid_last_error) = 0.0f;
-            id(pid_output) = 0.0f;
-            id(pid_kp) = 1.2f;
-            id(pid_ki) = 0.005f;
-            id(pid_kd) = 0.3f;
-            id(warmwasser_zieltemperatur) = 50.0f;
-            id(heizmodus) = "summer";
-            id(mischer_position) = 50.0f;
-            id(mischer_laufzeit_s) = 120;
-            id(letzte_kalibrierung) = 0UL;
-            id(mischer_schliesst) = false;
-            id(mischer_geschlossen) = false;
-            id(invalid_sensor_count) = 0;
-            ESP_LOGI("Reset", "Alle nichtflüchtigen Einstellungen wurden auf Standardwerte zurückgesetzt.");
-        - button.press: restart_button
-
+one_wire:
+  - platform: gpio
+    pin: GPIO14
 
 sensor:
+  - platform: dallas_temp
+    name: "Vorlauftemperatur"
+#    address: 0x43000000bce76928
+    address: 0xfb00000ff6541e28
+    id: vorlauftemperatur
+    accuracy_decimals: 1
+    update_interval: 30s
+    filters:
+      - filter_out: nan
+    on_value:
+      - logger.log:
+          format: "Vorlauftemperatur: %.2f C"
+          args: ["x"]
+    on_raw_value:
+      - logger.log: "Vorlauftemperatur Rohwert gelesen"
+  - platform: dallas_temp
+    name: "Kesseltemperatur2"
+    address: 0xe200000ff1832228
+    id: kesseltemperatur2
+    accuracy_decimals: 1
+    update_interval: 15s
+    filters:
+      - filter_out: nan
+    on_value:
+      - logger.log:
+          format: "Kesseltemperatur2: %.2f C"
+          args: ["x"]
+    on_raw_value:
+      - logger.log: "Kesseltemperatur2 Rohwert gelesen"
+  - platform: dallas_temp
+    name: "Kesseltemperatur"
+    address: 0x61000000bc013428
+    id: kesseltemperatur
+    accuracy_decimals: 1
+    update_interval: 15s
+    filters:
+      - filter_out: nan
+    on_value:
+      - logger.log:
+          format: "Kesseltemperatur: %.2f C"
+          args: ["x"]
+    on_raw_value:
+      - logger.log: "Kesseltemperatur Rohwert gelesen"
+  - platform: dallas_temp
+    name: "Warmwassertemperatur"
+    address: 0x7600000ff5c07c28
+    id: warmwassertemperatur
+    accuracy_decimals: 1
+    update_interval: 15s
+    filters:
+      - filter_out: nan
+    on_value:
+      - logger.log:
+          format: "Warmwassertemperatur: %.2f C"
+          args: ["x"]
+    on_raw_value:
+      - logger.log: "Warmwassertemperatur Rohwert gelesen"
   - platform: wifi_signal
     name: "Heizung ESP32 WLAN Qualität"
     update_interval: 60s
@@ -933,20 +866,3 @@ interval:
           then:
             - lambda: |-
                 id(brenner_betriebsstunden) += 1.0 / 60.0;  // 1 Minute = 1/60 Stunde
-      - lambda: |-
-          float val = id(brenner_betriebsstunden);
-          uint8_t buf[4];
-          memcpy(buf, &val, sizeof(val));
-          auto dev = id(eeprom);
-          dev->write(buf, sizeof(buf));
-          ESP_LOGD("FRAM", "Brenner-Betriebsstunden gespeichert: %.2f h", val);
-      - lambda: |-
-          float val = id(warmwasser_zieltemperatur);
-          uint8_t buf[4];
-          memcpy(buf, &val, sizeof(val));
-          auto dev = id(eeprom);
-          uint8_t addr[2] = {0x00, 0x10}; // High, Low Byte
-          if (dev->write(addr, 2) == esphome::i2c::ErrorCode::ERROR_OK &&
-              dev->write(buf, sizeof(buf)) == esphome::i2c::ErrorCode::ERROR_OK) {
-            ESP_LOGD("FRAM", "Warmwasser-Zieltemperatur gespeichert: %.2f °C", val);
-          }
