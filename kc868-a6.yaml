@@ -150,6 +150,7 @@ ds2482_custom:
       - logger.log: "Warmwassertemperatur Rohwert gelesen"        
     - channel: 3
       name: "Outdoor"
+      id: outdoor
       accuracy_decimals: 2
 
 # Example configuration entry
@@ -171,12 +172,13 @@ display:
     id: nextion_display
     uart_id: uart_nextion
     lambda: |-
-      it.set_component_text("t0", "Hallo ESPHome!");
+      it.set_component_text("t_title", "HEIZUNG");
     # Serve the TFT from HA (http or https). http is faster on small MCUs.
     tft_url: http://192.168.1.56:8123/local/tft/heizung.tft
     # optional: choose a page at connect
     start_up_page: 0
-      
+
+
 globals:
   - id: zieltemperatur
     type: float
@@ -699,7 +701,7 @@ number:
     optimistic: true
     min_value: 20.0
     max_value: 60.0
-    step: 1.0
+    step: 0.5
     initial_value: 40.0
     set_action:
       then:
@@ -950,3 +952,68 @@ interval:
               dev->write(buf, sizeof(buf)) == esphome::i2c::ErrorCode::ERROR_OK) {
             ESP_LOGD("FRAM", "Warmwasser-Zieltemperatur gespeichert: %.2f °C", val);
           }
+  - interval: 1s
+    then:
+      - lambda: |-
+
+          // Clock (HH:MM)
+          if (id(sntp_time).now().is_valid()) {
+            char tbuf[6];
+            snprintf(tbuf, sizeof(tbuf), "%02d:%02d", id(sntp_time).now().hour, id(sntp_time).now().minute);
+            id(nextion_display).set_component_text("home.t_time", tbuf);
+          }
+          // small helper to print temperatures safely
+          auto print_temp = [&](const char* comp, float v) {
+            if (!std::isfinite(v)) {
+              id(nextion_display).set_component_text(comp, "--");
+              return;
+            }
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.1f°C", v);
+            id(nextion_display).set_component_text(comp, buf);
+          };
+          // --- HOME page values ---
+          print_temp("home.t_flow", id(vorlauftemperatur).state);
+          print_temp("home.t_out",  id(outdoor).state);
+
+          // Vorlauf-Soll (use your GLOBAL 'zieltemperatur' or the number entity)
+          {
+            char buf[16];
+            // If you want the GLOBAL:
+            snprintf(buf, sizeof(buf), "%.1f°C", id(zieltemperatur));
+            // If you prefer the NUMBER entity instead, use this line:
+            // snprintf(buf, sizeof(buf), "%.1f°C", id(zieltemperatur_input).state);
+            id(nextion_display).set_component_text("home.t_flow_sp", buf);
+          }
+          print_temp("home.t_boiler",  id(kesseltemperatur).state);
+          print_temp("home.t_dhw",  id(warmwassertemperatur).state);
+          // --- HOME page ---
+
+#          id(nextion_display).set_component_text("page0.t_flow",     fmt(id(vorlauftemperatur).state).c_str());
+#          id(nextion_display).set_component_text("page0.t_ou",      fmt(id(outdoor).state).c_str());
+#          id(nextion_display).set_component_text("page0.t_flow_sp",  (to_string(id(zieltemperatur_input).state,1) + "°C").c_str());
+#          id(hmi).set_component_text("home.t_boiler",   fmt(id(temp_boiler).state).c_str());
+#          id(hmi).set_component_text("home.t_boiler_sp",(to_string(id(sp_boiler).state,1) + "°C").c_str());
+#          id(hmi).set_component_text("home.t_dhw",      fmt(id(temp_dhw).state).c_str());
+#          id(hmi).set_component_text("home.t_dhw_sp",   (to_string(id(sp_dhw).state,1) + "°C").c_str());
+#          id(hmi).set_component_text("home.t_mode",     id(hvac_mode).state.c_str());
+
+#          // j_mixer (optional if you have feedback)
+#          // id(hmi).set_component_value("home.j_mixer", (int) round(id(mixer_pos).state * 100.0)); // 0..100
+
+
+
+#          // --- HEATING page ---
+#          id(hmi).set_component_text("heating.t_flow",     fmt(id(temp_flow).state).c_str());
+#          id(hmi).set_component_text("heating.t_return",   fmt(id(temp_return).state).c_str());
+#          id(hmi).set_component_text("heating.t_flow_sp",  (to_string(id(sp_flow).state,1) + "°C").c_str());
+#          id(hmi).set_component_value("heating.n_curve_slope", (int) round(id(curve_slope).state * 10)); // x10
+#          id(hmi).set_component_value("heating.n_curve_level", (int) id(curve_level).state);
+
+ #         // --- DHW page ---
+ #         id(hmi).set_component_text("dhw.t_dhw",    fmt(id(temp_dhw).state).c_str());
+ #         id(hmi).set_component_text("dhw.t_dhw_sp", (to_string(id(sp_dhw).state,1) + "°C").c_str());
+
+  #        // --- BOILER page ---
+  #        id(hmi).set_component_text("boiler.t_boiler",    fmt(id(temp_boiler).state).c_str());
+  #        id(hmi).set_component_text("boiler.t_boiler_sp", (to_string(id(sp_boiler).state,1) + "°C").c_str());
